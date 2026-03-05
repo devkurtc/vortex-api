@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -28,10 +29,28 @@ jobs:
           echo "$COMPOSE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Inject DEPLOY_SHA to force container recreation
+        id: compose
+        run: |
+          COMPOSE="${{ steps.stack.outputs.compose }}"
+          SHA="${{ github.sha }}"
+
+          if echo "$COMPOSE" | grep -q 'DEPLOY_SHA='; then
+            # Replace existing DEPLOY_SHA value with new commit SHA
+            COMPOSE=$(echo "$COMPOSE" | sed "s/DEPLOY_SHA=.*/DEPLOY_SHA=${SHA}/")
+          else
+            # Add DEPLOY_SHA after the environment: line
+            COMPOSE=$(echo "$COMPOSE" | sed "/environment:/a\\      - DEPLOY_SHA=${SHA}")
+          fi
+
+          echo "compose<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMPOSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Redeploy stack
         run: |
           jq -n \
-            --arg c "${{ steps.stack.outputs.compose }}" \
+            --arg c "${{ steps.compose.outputs.compose }}" \
             '{stackFileContent: $c, env: [], prune: true, pullImage: true}' > /tmp/payload.json
 
           curl -sk -X PUT "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}?endpointId=${{ secrets.PORTAINER_ENDPOINT_ID }}" \
@@ -41,5 +60,22 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "Stack redeployed. Container will rebuild from latest code."
-          echo "App URL: https://vltc-app.syzygyonline.com"
+          echo "Waiting for container to recreate and app to come online..."
+          APP_URL="https://vltc-app.syzygyonline.com"
+          MAX_ATTEMPTS=24
+          SLEEP_SECONDS=10
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            HTTP_CODE=$(curl -sk -o /dev/null -w '%{http_code}' "$APP_URL" || echo "000")
+            echo "Attempt $i/$MAX_ATTEMPTS: HTTP $HTTP_CODE"
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "App is live at $APP_URL"
+              exit 0
+            fi
+
+            sleep $SLEEP_SECONDS
+          done
+
+          echo "App did not respond with HTTP 200 within $((MAX_ATTEMPTS * SLEEP_SECONDS)) seconds"
+          exit 1
