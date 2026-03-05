@@ -2,7 +2,7 @@
 
 ## Overview
 
-Deploy VortexAPI to CT 6000 (lab-apps) on Proxmox, exposed via Cloudflare tunnel at `vltc-app.vortexloop.com`.
+Deploy VortexAPI to CT 6000 (lab-apps) on Proxmox, exposed via Cloudflare tunnel at `vltc-app.syzygyonline.com`.
 
 ```
 GitHub (main branch)
@@ -15,7 +15,7 @@ CT 6000 (192.168.86.27)
   │  Docker container on port 3090
   ▼
 Cloudflare Tunnel (CT 4000)
-  │  vltc-app.vortexloop.com → http://192.168.86.27:3090
+  │  vltc-app.syzygyonline.com → http://192.168.86.27:3090
   ▼
 Public internet
 ```
@@ -24,7 +24,7 @@ Public internet
 
 - GitHub repo: `https://github.com/devkurtc/vortex-api` (or your chosen org/name)
 - Portainer running on CT 6000 at `https://portainer.syzygyonline.com`
-- Cloudflare access to `vortexloop.com` DNS
+- Cloudflare access to `syzygyonline.com` DNS
 - Cloudflare tunnel `syzygy` running on CT 4000
 
 ---
@@ -81,15 +81,19 @@ curl -sk -X POST "https://portainer.syzygyonline.com/api/stacks/create/standalon
   }'
 ```
 
-After creation, note the **Stack ID** (e.g., `30`) and **Endpoint ID** (`3`) — needed for GitHub Actions.
+After creation, note the **Stack ID** and **Endpoint ID** (`3`) — needed for GitHub Actions.
+
+**Current deployment:** Stack ID `36`, Endpoint ID `3`, Portainer stack name `vortex-api`.
+
+> **Note:** The Portainer stack uses a "clone-and-build-at-start" compose (not the repo's Dockerfile) because Cloudflare tunnel has ~100s HTTP timeout which causes Portainer git-based Docker builds to fail with 524. The compose clones the repo, runs `npm ci` + `next build`, copies the Next.js standalone output to `/app`, then starts `node server.js`.
 
 ---
 
 ## Step 3 — Configure Cloudflare DNS + Tunnel
 
-### 3a. Add DNS Record (vortexloop.com)
+### 3a. Add DNS Record (syzygyonline.com)
 
-In Cloudflare Dashboard → `vortexloop.com` → DNS:
+In Cloudflare Dashboard → `syzygyonline.com` → DNS:
 
 | Type | Name | Content | Proxy |
 |------|------|---------|-------|
@@ -99,7 +103,7 @@ The tunnel ID is the same `syzygy` tunnel: `7cb14109-62a7-48fd-b15b-f5135110c47a
 
 So the CNAME target is: `7cb14109-62a7-48fd-b15b-f5135110c47a.cfargotunnel.com`
 
-> **Note:** If `vortexloop.com` is on a different Cloudflare account than `syzygyonline.com`, you'll need to add the tunnel route via the Cloudflare Zero Trust dashboard or the cloudflared config instead of CNAME.
+> **Note:** If `syzygyonline.com` is on a different Cloudflare account than `syzygyonline.com`, you'll need to add the tunnel route via the Cloudflare Zero Trust dashboard or the cloudflared config instead of CNAME.
 
 ### 3b. Add Tunnel Route
 
@@ -108,7 +112,7 @@ So the CNAME target is: `7cb14109-62a7-48fd-b15b-f5135110c47a.cfargotunnel.com`
 1. Zero Trust → Networks → Tunnels → `syzygy` → Configure
 2. Public Hostname → Add a public hostname:
    - Subdomain: `vltc-app`
-   - Domain: `vortexloop.com`
+   - Domain: `syzygyonline.com`
    - Service: `http://192.168.86.27:3090`
 
 **Option 2 — Via cloudflared config (CT 4000):**
@@ -116,7 +120,7 @@ So the CNAME target is: `7cb14109-62a7-48fd-b15b-f5135110c47a.cfargotunnel.com`
 SSH into CT 4000 and edit the tunnel config to add:
 
 ```yaml
-- hostname: vltc-app.vortexloop.com
+- hostname: vltc-app.syzygyonline.com
   service: http://192.168.86.27:3090
 ```
 
@@ -133,7 +137,7 @@ In the GitHub repo → Settings → Secrets and variables → Actions, add:
 | `PORTAINER_URL` | `https://portainer.syzygyonline.com` |
 | `PORTAINER_USER` | `admin` |
 | `PORTAINER_PASSWORD` | *(from CREDENTIALS.md)* |
-| `PORTAINER_STACK_ID` | *(from Step 2, e.g., `30`)* |
+| `PORTAINER_STACK_ID` | `36` |
 | `PORTAINER_ENDPOINT_ID` | `3` |
 
 ---
@@ -148,21 +152,21 @@ In the GitHub repo → Settings → Secrets and variables → Actions, add:
 
 2. **App accessible:**
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" https://vltc-app.vortexloop.com/login
+   curl -s -o /dev/null -w "%{http_code}" https://vltc-app.syzygyonline.com/login
    # Should return 200
    ```
 
 3. **Auto-deploy working:**
    - Make a small change, push to `main`
    - Check GitHub Actions tab for the deploy workflow
-   - Verify the change appears at `https://vltc-app.vortexloop.com`
+   - Verify the change appears at `https://vltc-app.syzygyonline.com`
 
 ---
 
 ## Architecture Summary
 
 ```
-vltc-app.vortexloop.com
+vltc-app.syzygyonline.com
   → Cloudflare Tunnel (syzygy, CT 4000)
   → http://192.168.86.27:3090
   → Docker container "vortex-api" (CT 6000)
