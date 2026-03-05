@@ -11,6 +11,7 @@ interface UiState {
   responses: Record<string, ApiResponse>; // keyed by tab ID
   history: HistoryEntry[];
   sidebarCollapsed: boolean;
+  variablesPanelOpen: boolean;
 
   // Actions
   setMode: (mode: AppMode) => void;
@@ -23,6 +24,8 @@ interface UiState {
   addHistoryEntry: (entry: HistoryEntry) => void;
   clearHistory: () => void;
   toggleSidebar: () => void;
+  toggleVariablesPanel: () => void;
+  setVariablesPanelOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -34,6 +37,7 @@ export const useUiStore = create<UiState>()(
       responses: {},
       history: [],
       sidebarCollapsed: false,
+      variablesPanelOpen: false,
 
       setMode: (mode) => set({ mode }),
 
@@ -85,6 +89,10 @@ export const useUiStore = create<UiState>()(
       clearHistory: () => set({ history: [] }),
 
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+      toggleVariablesPanel: () => set((s) => ({ variablesPanelOpen: !s.variablesPanelOpen })),
+
+      setVariablesPanelOpen: (open) => set({ variablesPanelOpen: open }),
     }),
     {
       name: 'vortex-ui',
@@ -93,6 +101,7 @@ export const useUiStore = create<UiState>()(
         tabs: state.tabs,
         activeTab: state.activeTab,
         sidebarCollapsed: state.sidebarCollapsed,
+        variablesPanelOpen: state.variablesPanelOpen,
       }),
     }
   )

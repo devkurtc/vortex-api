@@ -10,11 +10,24 @@ interface ScriptContext {
   getGlobalVariable: (key: string) => string | undefined;
 }
 
+export interface ScriptVariableSet {
+  key: string;
+  value: string;
+}
+
+export interface ScriptResult {
+  success: boolean;
+  error?: string;
+  variablesSet: ScriptVariableSet[];
+}
+
 export function runPostResponseScript(
   script: string,
   context: ScriptContext
-): { success: boolean; error?: string } {
-  if (!script?.trim()) return { success: true };
+): ScriptResult {
+  if (!script?.trim()) return { success: true, variablesSet: [] };
+
+  const variablesSet: ScriptVariableSet[] = [];
 
   try {
     // Build the pm shim
@@ -31,7 +44,11 @@ export function runPostResponseScript(
         status: context.responseStatus,
       },
       globals: {
-        set: (key: string, value: string) => context.setGlobalVariable(key, String(value)),
+        set: (key: string, value: string) => {
+          const strValue = String(value);
+          context.setGlobalVariable(key, strValue);
+          variablesSet.push({ key, value: strValue });
+        },
         get: (key: string) => context.getGlobalVariable(key) ?? '',
       },
       environment: {
@@ -46,11 +63,12 @@ export function runPostResponseScript(
     const fn = new Function('pm', script);
     fn(pm);
 
-    return { success: true };
+    return { success: true, variablesSet };
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),
+      variablesSet,
     };
   }
 }

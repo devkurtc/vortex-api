@@ -4,6 +4,7 @@ import { runPostResponseScript } from './script-runner';
 import { ensureValidToken, refreshAccessToken } from './token-manager';
 import { useEnvironmentStore } from '@/lib/stores/environment-store';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { useConsoleStore } from '@/lib/stores/console-store';
 
 interface ExecuteOptions {
   mode: AppMode;
@@ -153,12 +154,47 @@ export async function executeRequest(
 
   // Run post-response scripts
   if (request.testScript) {
-    runPostResponseScript(request.testScript, {
+    const scriptResult = runPostResponseScript(request.testScript, {
       responseBody: result.body,
       responseStatus: result.status,
       setGlobalVariable: envStore.setGlobalVariable,
       getGlobalVariable: (key) => envStore.globalVariables[key],
     });
+
+    // Attach script result to response for UI display
+    result.scriptResult = {
+      success: scriptResult.success,
+      error: scriptResult.error,
+      variablesSet: scriptResult.variablesSet,
+    };
+
+    // Log to console store
+    const consoleStore = useConsoleStore.getState();
+    const entries: Parameters<typeof consoleStore.addEntries>[0] = [];
+
+    for (const v of scriptResult.variablesSet) {
+      entries.push({
+        type: 'script-set',
+        message: `Set global: ${v.key}`,
+        detail: v.value,
+      });
+    }
+
+    if (scriptResult.error) {
+      entries.push({
+        type: 'script-error',
+        message: `Script error: ${scriptResult.error}`,
+      });
+    } else if (scriptResult.variablesSet.length === 0) {
+      entries.push({
+        type: 'info',
+        message: 'Post-response script ran (no variables set)',
+      });
+    }
+
+    if (entries.length > 0) {
+      consoleStore.addEntries(entries);
+    }
   }
 
   // Log audit (fire-and-forget)

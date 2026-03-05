@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { JsonViewer } from '@/components/shared/json-viewer';
 import { getStatusColor } from '@/lib/constants';
 import type { ApiResponse } from '@/lib/types';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, FileCode2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface ResponseViewerProps {
@@ -75,6 +75,21 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
               ({Object.keys(response.headers).length})
             </span>
           </TabsTrigger>
+          {response.scriptResult && (
+            <TabsTrigger value="scripts">
+              Scripts
+              {response.scriptResult.variablesSet.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {response.scriptResult.variablesSet.length}
+                </Badge>
+              )}
+              {response.scriptResult.error && (
+                <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">
+                  !
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="body" className="flex-1 overflow-auto px-3 pb-3">
           <JsonViewer data={response.body} maxHeight="100%" />
@@ -89,6 +104,45 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
             ))}
           </div>
         </TabsContent>
+        {response.scriptResult && (
+          <TabsContent value="scripts" className="px-3 pb-3">
+            <div className="space-y-2">
+              {/* Summary */}
+              <div className="flex items-center gap-2">
+                <FileCode2 className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {response.scriptResult.success ? 'Script completed' : 'Script failed'}
+                  {response.scriptResult.variablesSet.length > 0 &&
+                    ` — ${response.scriptResult.variablesSet.length} variable${response.scriptResult.variablesSet.length !== 1 ? 's' : ''} set`}
+                </span>
+              </div>
+
+              {/* Error */}
+              {response.scriptResult.error && (
+                <div className="rounded border border-destructive/50 bg-destructive/5 px-3 py-2 font-mono text-xs text-destructive">
+                  {response.scriptResult.error}
+                </div>
+              )}
+
+              {/* Variables set */}
+              {response.scriptResult.variablesSet.length > 0 && (
+                <div className="space-y-1">
+                  {response.scriptResult.variablesSet.map((v, i) => (
+                    <div key={i} className="flex gap-2 text-xs">
+                      <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                        SET
+                      </Badge>
+                      <span className="font-medium text-foreground">{v.key}</span>
+                      <span className="truncate font-mono text-muted-foreground" title={v.value}>
+                        {v.value.length > 80 ? v.value.slice(0, 80) + '…' : v.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

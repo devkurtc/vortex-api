@@ -5,6 +5,7 @@ import { useCollectionStore } from '@/lib/stores/collection-store';
 import { RequestTabs } from '@/components/developer/request-tabs';
 import { RequestBuilder } from '@/components/developer/request-builder';
 import { ResponseViewer } from '@/components/developer/response-viewer';
+import { VariablesPanel } from '@/components/developer/variables-panel';
 import { Separator } from '@/components/ui/separator';
 import { Zap } from 'lucide-react';
 
@@ -45,6 +46,9 @@ export default function DeveloperPage() {
           <div className="overflow-auto" style={{ flex: '1 1 50%' }}>
             <ResponseViewer response={response} />
           </div>
+
+          {/* Variables & Console Panel */}
+          <VariablesPanel />
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">

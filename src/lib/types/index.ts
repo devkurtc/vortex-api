@@ -73,6 +73,12 @@ export interface Environment {
 
 // ─── Response Types ───────────────────────────────────────────
 
+export interface ScriptResultInfo {
+  success: boolean;
+  error?: string;
+  variablesSet: { key: string; value: string }[];
+}
+
 export interface ApiResponse {
   status: number;
   statusText: string;
@@ -81,6 +87,7 @@ export interface ApiResponse {
   size: number;
   duration: number;
   timestamp: string;
+  scriptResult?: ScriptResultInfo;
 }
 
 // ─── History Types ────────────────────────────────────────────
