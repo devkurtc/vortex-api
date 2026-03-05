@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { COURTS } from '@/lib/constants';
-import { getRelays, getTimeslots, getSettings, patchSettings } from '@/lib/services/vortexloop-api';
+import { getRelays, getTimeslots, getSettings, patchSettings, updateRelay } from '@/lib/services/vortexloop-api';
 import { Lightbulb, RefreshCw, Sunrise, Sunset } from 'lucide-react';
 import { format } from 'date-fns';
 
