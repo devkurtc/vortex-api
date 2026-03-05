@@ -1,0 +1,45 @@
+name: Deploy to Portainer
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Portainer
+        id: auth
+        run: |
+          TOKEN=$(curl -sk -X POST "${{ secrets.PORTAINER_URL }}/api/auth" \
+            -H "Content-Type: application/json" \
+            -d "{\"Username\":\"${{ secrets.PORTAINER_USER }}\",\"Password\":\"${{ secrets.PORTAINER_PASSWORD }}\"}" \
+            | jq -r .jwt)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Get current stack compose
+        id: stack
+        run: |
+          COMPOSE=$(curl -sk "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}/file" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            | jq -r .StackFileContent)
+          echo "compose<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMPOSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Redeploy stack
+        run: |
+          jq -n \
+            --arg c "${{ steps.stack.outputs.compose }}" \
+            '{stackFileContent: $c, env: [], prune: true, pullImage: true}' > /tmp/payload.json
+
+          curl -sk -X PUT "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}?endpointId=${{ secrets.PORTAINER_ENDPOINT_ID }}" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/payload.json
+
+      - name: Verify deployment
+        run: |
+          echo "Stack redeployed. Container will rebuild from latest code."
+          echo "App URL: https://vltc-app.vortexloop.com"
