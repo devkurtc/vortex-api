@@ -15,7 +15,7 @@ import { COURTS } from '@/lib/constants';
 import { getSettings, patchSettings } from '@/lib/services/vortexloop-api';
 import { useEnvironmentStore } from '@/lib/stores/environment-store';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { Save, MapPin, Settings2, Zap, Shield, RotateCcw, Terminal } from 'lucide-react';
+import { Save, MapPin, Settings2, Zap, Shield, RotateCcw, Terminal, ChevronDown, ChevronRight, Info } from 'lucide-react';
 
 interface AdvancedSettings {
   loglevel: string;
@@ -44,6 +44,7 @@ export default function SettingsPage() {
   const [reseedOpen, setReseedOpen] = useState(false);
   const [reseeding, setReseeding] = useState(false);
   const [reseedLogs, setReseedLogs] = useState<{ type: string; message: string; timestamp: string }[]>([]);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
   const fetchSettings = useCallback(async () => {
@@ -375,6 +376,56 @@ export default function SettingsPage() {
             Purge all scheduled relay jobs from the Agenda dashboard and re-fetch fresh timeslots
             from the VLTC external feed. The <strong>cleanDB</strong> job will be preserved.
           </p>
+
+          {/* Collapsible technical explanation */}
+          <div className="rounded-md border border-muted">
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen(!howItWorksOpen)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {howItWorksOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              <Info className="h-3 w-3" />
+              How it works
+            </button>
+            {howItWorksOpen && (
+              <div className="border-t px-3 pb-3 pt-2 text-xs text-muted-foreground space-y-2">
+                <p>This operation performs the following steps against the production VLTC system:</p>
+                <ol className="list-decimal ml-4 space-y-1.5">
+                  <li>
+                    <strong className="text-foreground">Fetch jobs from Agendash</strong> &mdash; Calls the
+                    Agenda dashboard API (<code className="text-amber-400/80">/dash/api</code>) to retrieve all
+                    currently scheduled jobs.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Delete setRelayGroup jobs</strong> &mdash; Filters out the
+                    recurring <code className="text-amber-400/80">cleanDB</code> housekeeping job and bulk-deletes
+                    all <code className="text-amber-400/80">setRelayGroup</code> jobs. This clears the entire
+                    relay schedule.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Fetch fresh timeslots</strong> &mdash; Calls the VLTC
+                    external feed (<code className="text-amber-400/80">vltc.com.mt/timeslots/TimeSlot</code>)
+                    using the configured API key to get the latest court booking schedule.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Re-seed into Agenda</strong> &mdash; For each timeslot,
+                    sends a <code className="text-amber-400/80">PUT /api/timeslots/:id</code> request to the VLTC
+                    backend. The backend calculates sunlight-aware adjustments, applies anti-flicker rules, and
+                    creates two Agenda jobs per timeslot: one for lights ON, one for lights OFF.
+                  </li>
+                </ol>
+                <div className="mt-2 rounded bg-muted/50 px-2 py-1.5">
+                  <p className="font-medium text-foreground">Safe to run:</p>
+                  <ul className="list-disc ml-4 mt-1 space-y-0.5">
+                    <li>The <code className="text-amber-400/80">cleanDB</code> job is never deleted</li>
+                    <li>No relay hardware commands are sent during reseed</li>
+                    <li>Relays will only be toggled when Agenda fires the newly scheduled jobs at their designated times</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
 
           <Dialog open={reseedOpen} onOpenChange={(open) => { if (!reseeding) setReseedOpen(open); }}>
             <DialogTrigger asChild>
