@@ -1,15 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
 import { COURTS } from '@/lib/constants';
 import { getSettings, patchSettings } from '@/lib/services/vortexloop-api';
-import { Save, MapPin, Settings2, Zap, Shield } from 'lucide-react';
+import { useEnvironmentStore } from '@/lib/stores/environment-store';
+import { useAuthStore } from '@/lib/stores/auth-store';
+import { Save, MapPin, Settings2, Zap, Shield, RotateCcw, Terminal } from 'lucide-react';
 
 interface AdvancedSettings {
   loglevel: string;
@@ -33,6 +39,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // Reseed state
+  const [reseedOpen, setReseedOpen] = useState(false);
+  const [reseeding, setReseeding] = useState(false);
+  const [reseedLogs, setReseedLogs] = useState<{ type: string; message: string; timestamp: string }[]>([]);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -62,6 +74,68 @@ export default function SettingsPage() {
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
   }
+
+  async function handleReseed() {
+    setReseeding(true);
+    setReseedLogs([]);
+
+    const env = useEnvironmentStore.getState().getActiveEnvironment();
+    let baseUrl = 'https://vltc.vortexloop.com/';
+    if (env) {
+      const sitedomain = env.variables.find((v) => v.key === 'sitedomain' && v.enabled);
+      if (sitedomain?.value) baseUrl = sitedomain.value;
+    }
+    const token = useAuthStore.getState().getAccessToken();
+
+    try {
+      const res = await fetch('/api/reseed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl, token }),
+      });
+
+      if (!res.body) {
+        setReseedLogs((prev) => [...prev, { type: 'error', message: 'No response stream', timestamp: new Date().toISOString() }]);
+        setReseeding(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const entry = JSON.parse(line.slice(6));
+              setReseedLogs((prev) => [...prev, entry]);
+            } catch { /* skip malformed */ }
+          }
+        }
+      }
+    } catch (err) {
+      setReseedLogs((prev) => [...prev, {
+        type: 'error',
+        message: `Connection error: ${err instanceof Error ? err.message : 'Unknown'}`,
+        timestamp: new Date().toISOString(),
+      }]);
+    } finally {
+      setReseeding(false);
+    }
+  }
+
+  // Auto-scroll console
+  useEffect(() => {
+    consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [reseedLogs]);
 
   function updateSetting<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
     if (!settings) return;
@@ -287,6 +361,94 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Agenda Reseed */}
+      <Card className="mt-4 border-amber-500/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <RotateCcw className="h-4 w-4" />
+            Agenda Reset &amp; Reseed
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Purge all scheduled relay jobs from the Agenda dashboard and re-fetch fresh timeslots
+            from the VLTC external feed. The <strong>cleanDB</strong> job will be preserved.
+          </p>
+
+          <Dialog open={reseedOpen} onOpenChange={(open) => { if (!reseeding) setReseedOpen(open); }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="border-amber-500/40 text-amber-500 hover:bg-amber-500/10">
+                <RotateCcw className="mr-1 h-4 w-4" />
+                Reset &amp; Reseed Agenda
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl" showCloseButton={!reseeding}>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Terminal className="h-5 w-5" />
+                  {reseeding ? 'Reseeding in progress...' : reseedLogs.length > 0 ? 'Reseed Complete' : 'Confirm Reset & Reseed'}
+                </DialogTitle>
+                <DialogDescription>
+                  {reseedLogs.length === 0 && !reseeding
+                    ? 'This will delete ALL setRelayGroup jobs and re-fetch timeslots from the VLTC feed. The cleanDB job will NOT be touched.'
+                    : 'Live output from the reseed operation:'}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Console output */}
+              {(reseeding || reseedLogs.length > 0) && (
+                <div className="rounded-md border bg-black/80 p-3 font-mono text-xs max-h-80 overflow-y-auto">
+                  {reseedLogs.map((log, i) => (
+                    <div key={i} className="flex gap-2 py-0.5">
+                      <span className="text-muted-foreground shrink-0 w-20">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span className={
+                        log.type === 'error' ? 'text-red-400' :
+                        log.type === 'success' ? 'text-green-400' :
+                        log.type === 'warn' ? 'text-amber-400' :
+                        'text-blue-300'
+                      }>
+                        {log.type === 'error' ? 'ERR' :
+                         log.type === 'success' ? 'OK ' :
+                         log.type === 'warn' ? 'WRN' : 'INF'}
+                      </span>
+                      <span className="text-gray-200">{log.message}</span>
+                    </div>
+                  ))}
+                  {reseeding && (
+                    <div className="flex gap-2 py-0.5">
+                      <span className="text-muted-foreground shrink-0 w-20">&nbsp;</span>
+                      <span className="text-blue-300 animate-pulse">...</span>
+                    </div>
+                  )}
+                  <div ref={consoleEndRef} />
+                </div>
+              )}
+
+              <DialogFooter>
+                {reseedLogs.length === 0 && !reseeding && (
+                  <>
+                    <Button variant="outline" onClick={() => setReseedOpen(false)}>Cancel</Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleReseed}
+                    >
+                      Yes, Reset &amp; Reseed
+                    </Button>
+                  </>
+                )}
+                {!reseeding && reseedLogs.length > 0 && (
+                  <Button variant="outline" onClick={() => { setReseedOpen(false); setReseedLogs([]); }}>
+                    Close
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
     </div>
   );
 }
